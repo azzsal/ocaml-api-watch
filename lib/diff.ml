@@ -30,14 +30,13 @@ let extract_items items =
     (fun tbl item ->
       match item with
       | Sig_value (id, val_des, _) ->
-          Sig_item_map.add ~name:(Ident.name id) Sig_item_map.Value val_des
-            Sig_item_map.empty
+          Sig_item_map.add ~name:(Ident.name id) Sig_item_map.Value val_des tbl
       | Sig_module (id, _, mod_decl, _, _) ->
           Sig_item_map.add ~name:(Ident.name id) Sig_item_map.Module mod_decl
-            Sig_item_map.empty
+            tbl
       | Sig_type (id, type_decl, _, _) ->
           Sig_item_map.add ~name:(Ident.name id) Sig_item_map.Type
-            (type_decl, id) Sig_item_map.empty
+            (type_decl, id) tbl
       | _ -> tbl)
     Sig_item_map.empty items
 
@@ -103,13 +102,19 @@ let rec items ~reference ~current =
   let ref_items = extract_items reference in
   let curr_items = extract_items current in
   Sig_item_map.diff
-    ~diff_item:(fun item_type name reference current ->
-      match item_type with
-      | Sig_item_map.Value ->
-          value_item ~typing_env:env ~name ~reference ~current
-      | Sig_item_map.Module ->
-          module_item ~typing_env:env ~name ~reference ~current
-      | Sig_item_map.Type -> type_item ~typing_env:env ~name ~reference ~current)
+    ~diff_item:
+      {
+        diff_item =
+          (fun (type a) (item_type : a Sig_item_map.item_type) name
+               (reference : a option) (current : a option) ->
+            match item_type with
+            | Sig_item_map.Value ->
+                value_item ~typing_env:env ~name ~reference ~current
+            | Sig_item_map.Module ->
+                module_item ~typing_env:env ~name ~reference ~current
+            | Sig_item_map.Type ->
+                type_item ~typing_env:env ~name ~reference ~current);
+      }
     ref_items curr_items
 
 and module_item ~typing_env ~name ~(reference : module_declaration option)
@@ -120,7 +125,6 @@ and module_item ~typing_env ~name ~(reference : module_declaration option)
   | Some ref_md, None -> Some (Module { mname = name; mdiff = Removed ref_md })
   | Some reference, Some current ->
       module_declaration ~typing_env ~name ~reference ~current
-  | _ -> assert false
 
 and module_declaration ~typing_env ~name ~reference ~current =
   match (reference.md_type, current.md_type) with
